@@ -60,7 +60,29 @@ if not _http_c:find('#include "mbedtls.h"', 1, true) then
     end
 end
 
-_http_c, matched = _http_c:gsub('fetch_ssl%(conn, URL, verbose%)', "fetch_mbedtls(conn, URL, verbose, CHECK_FLAG('p'))")
+local _newHttpsBody = [[1) 
+{
+    int ret = fetch_mbedtls(conn, URL, verbose, CHECK_FLAG('p'));
+    if (ret != 0) {
+        switch(ret) {
+            case -1:
+#ifdef EAUTH
+		        errno = EAUTH;
+#else
+		        errno = EPERM;
+#endif
+                break;
+            case -0x6800: // MBEDTLS_ERR_SSL_TIMEOUT 
+                errno = ETIMEDOUT;
+                break;
+        }
+        fetch_syserr();
+        goto ouch;
+    }
+}
+]]
+
+_http_c, matched = _http_c:gsub('fetch_ssl%(conn, URL, verbose%) == %-1%) %{.-}', _newHttpsBody)
 if matched == 0 and not _http_c:find("fetch_mbedtls(conn, URL, verbose, CHECK_FLAG('p'))", 1, true) then 
     error("Unrecoverable libfetch http.c 2 code change!")
 end
